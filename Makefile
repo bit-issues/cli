@@ -1,6 +1,6 @@
 .PHONY: all version fmt lint test coverage benchmark air deps gen release clean build help
 
-BINARY_NAME := $(shell basename $(PWD))
+BINARY_NAME := bitissues-cli
 GIT_VERSION := $(shell git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
 VERSION ?= $(GIT_VERSION)
 

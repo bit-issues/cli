@@ -9,8 +9,8 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/capcom6/go-cli-template/internal"
-	"github.com/capcom6/go-cli-template/internal/cli/codes"
+	"github.com/bit-issues/cli/internal"
+	"github.com/bit-issues/cli/internal/cli/codes"
 	logger "github.com/go-core-fx/cli-logger"
 	"github.com/joho/godotenv"
 	"github.com/urfave/cli/v3"
