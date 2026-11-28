@@ -205,6 +205,22 @@ func TestCanonicalURL(t *testing.T) {
 	}
 }
 
+func TestCanonicalURLPreservesEscapedSeparator(t *testing.T) {
+	t.Parallel()
+
+	const (
+		withSlash    = "https://api.example.com/team%2Fone/api/v1/"
+		withoutSlash = "https://api.example.com/team%2Fone/api/v1"
+		want         = "https://api.example.com/team%2Fone/api/v1"
+	)
+	if got := credential.CanonicalURL(withSlash); got != want {
+		t.Errorf("CanonicalURL(%q) = %q, want %q", withSlash, got, want)
+	}
+	if got := credential.CanonicalURL(withoutSlash); got != want {
+		t.Errorf("CanonicalURL(%q) = %q, want %q", withoutSlash, got, want)
+	}
+}
+
 func TestCheckBaseURL(t *testing.T) {
 	t.Parallel()
 

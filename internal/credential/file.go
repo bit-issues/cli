@@ -119,6 +119,8 @@ func CanonicalURL(raw string) string {
 	parsed.Fragment = ""
 	parsed.RawFragment = ""
 	parsed.Path = strings.TrimRight(parsed.Path, "/")
+	// Keep RawPath consistent with Path so %2F survives trailing-slash trimming.
+	parsed.RawPath = strings.TrimRight(parsed.RawPath, "/")
 
 	if parsed.Scheme == "http" && strings.HasSuffix(parsed.Host, ":80") {
 		parsed.Host = strings.TrimSuffix(parsed.Host, ":80")
