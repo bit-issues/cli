@@ -3,11 +3,14 @@
 package credential
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	clientgo "github.com/bit-issues/client-go"
@@ -27,6 +30,8 @@ var (
 	ErrNotFound = errors.New("no stored credential")
 	// ErrInvalidMode classifies a credentials file readable by other users.
 	ErrInvalidMode = errors.New("credentials file permissions are too open")
+	// ErrBaseURLMismatch classifies credentials bound to a different API base URL.
+	ErrBaseURLMismatch = errors.New("stored credentials belong to a different API base URL")
 )
 
 // TokenPair is the tagged on-disk shape of the client-go token pair.
@@ -44,12 +49,22 @@ type Profile struct {
 	Status string `json:"status"`
 }
 
-// Credentials is the single persisted login record: token pair, profile and
-// the UTC timestamp of the last write.
+// Credentials is the single persisted login record: the canonical API base
+// URL it belongs to, token pair, profile and the UTC timestamp of the last
+// write.
 type Credentials struct {
+	BaseURL string    `json:"base_url"`
 	Tokens  TokenPair `json:"tokens"`
 	Profile Profile   `json:"profile"`
 	SavedAt time.Time `json:"saved_at"`
+}
+
+// State is an opaque snapshot of a credentials file's bytes and mode, used to
+// detect a concurrent login or logout before save-on-exit.
+type State struct {
+	path string
+	data []byte
+	mode os.FileMode
 }
 
 // TokenPairFrom converts a client-go token pair into its persisted shape.
@@ -62,15 +77,85 @@ func (p TokenPair) ClientTokens() clientgo.Tokens {
 	return clientgo.Tokens{AccessToken: p.AccessToken, RefreshToken: p.RefreshToken}
 }
 
+// Path returns the path of the snapshotted credentials file.
+func (s State) Path() string {
+	return s.path
+}
+
+// Matches reports whether the snapshotted file still holds exactly the bytes
+// and mode captured at startup. A missing, replaced or changed file fails.
+func (s State) Matches() bool {
+	info, statErr := os.Stat(s.path)
+	if statErr != nil || !info.Mode().IsRegular() {
+		return false
+	}
+	if info.Mode().Perm() != s.mode {
+		return false
+	}
+	data, readErr := os.ReadFile(s.path)
+	if readErr != nil {
+		return false
+	}
+
+	return bytes.Equal(data, s.data)
+}
+
+// CanonicalURL normalizes an API base URL for storage and comparison: it
+// trims whitespace, lowercases scheme and host, drops userinfo, query and
+// fragment, removes default ports and trailing slashes. Unparseable input is
+// returned trimmed so callers can still reject it through clientgo.New.
+func CanonicalURL(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return trimmed
+	}
+
+	parsed.Scheme = strings.ToLower(parsed.Scheme)
+	parsed.Host = strings.ToLower(parsed.Host)
+	parsed.User = nil
+	parsed.RawQuery = ""
+	parsed.ForceQuery = false
+	parsed.Fragment = ""
+	parsed.RawFragment = ""
+	parsed.Path = strings.TrimRight(parsed.Path, "/")
+
+	if parsed.Scheme == "http" && strings.HasSuffix(parsed.Host, ":80") {
+		parsed.Host = strings.TrimSuffix(parsed.Host, ":80")
+	} else if parsed.Scheme == "https" && strings.HasSuffix(parsed.Host, ":443") {
+		parsed.Host = strings.TrimSuffix(parsed.Host, ":443")
+	}
+
+	return parsed.String()
+}
+
+// CheckBaseURL verifies that stored credentials belong to configured. A
+// missing stored URL fails closed, so records predating URL binding are
+// rejected rather than used against an arbitrary base URL.
+func CheckBaseURL(stored, configured string) error {
+	want := CanonicalURL(configured)
+	got := CanonicalURL(stored)
+	if got == "" || got != want {
+		return ErrBaseURLMismatch
+	}
+
+	return nil
+}
+
 // Path returns the credentials file path, honoring XDG_CONFIG_HOME and
-// falling back to the user's home directory.
+// falling back to the user's home directory only when XDG_CONFIG_HOME is
+// unset or empty.
 func Path() (string, error) {
+	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
+		return PathFrom(xdg, ""), nil
+	}
+
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve home directory: %w", err)
 	}
 
-	return PathFrom(os.Getenv("XDG_CONFIG_HOME"), home), nil
+	return PathFrom("", home), nil
 }
 
 // PathFrom resolves the credentials path from explicit environment values.
@@ -151,29 +236,51 @@ func Load() (Credentials, error) {
 
 // LoadFrom reads and validates the credentials at path.
 func LoadFrom(path string) (Credentials, error) {
+	cred, _, err := LoadWithStateFrom(path)
+
+	return cred, err
+}
+
+// LoadWithState reads and validates the credentials at the default path and
+// also returns a snapshot for later change detection.
+func LoadWithState() (Credentials, State, error) {
+	path, err := Path()
+	if err != nil {
+		return Credentials{}, State{}, err
+	}
+
+	return LoadWithStateFrom(path)
+}
+
+// LoadWithStateFrom reads and validates the credentials at path and also
+// returns a snapshot of the exact file bytes and mode read, so a caller can
+// verify the file was not replaced by a concurrent login or logout.
+func LoadWithStateFrom(path string) (Credentials, State, error) {
 	info, statErr := os.Stat(path)
 	if statErr != nil {
 		if os.IsNotExist(statErr) {
-			return Credentials{}, fmt.Errorf("%w: %s", ErrNotFound, path)
+			return Credentials{}, State{}, fmt.Errorf("%w: %s", ErrNotFound, path)
 		}
 
-		return Credentials{}, fmt.Errorf("stat credentials file: %w", statErr)
+		return Credentials{}, State{}, fmt.Errorf("stat credentials file: %w", statErr)
 	}
 	if perm := info.Mode().Perm(); perm != fileMode {
-		return Credentials{}, fmt.Errorf("%w: %s has mode %o", ErrInvalidMode, path, perm)
+		return Credentials{}, State{}, fmt.Errorf("%w: %s has mode %o", ErrInvalidMode, path, perm)
 	}
 
 	data, readErr := os.ReadFile(path)
 	if readErr != nil {
-		return Credentials{}, fmt.Errorf("read credentials file: %w", readErr)
+		return Credentials{}, State{}, fmt.Errorf("read credentials file: %w", readErr)
 	}
 
 	var cred Credentials
 	if parseErr := json.Unmarshal(data, &cred); parseErr != nil {
-		return Credentials{}, fmt.Errorf("parse credentials file: %w", parseErr)
+		return Credentials{}, State{}, fmt.Errorf("parse credentials file: %w", parseErr)
 	}
 
-	return cred, nil
+	state := State{path: path, data: data, mode: info.Mode().Perm()}
+
+	return cred, state, nil
 }
 
 // Delete removes the credentials at the default path.

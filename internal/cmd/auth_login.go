@@ -79,7 +79,8 @@ func runLogin(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	record := credential.Credentials{
-		Tokens: credential.TokenPairFrom(result.Tokens),
+		BaseURL: credential.CanonicalURL(cfg.BaseURL),
+		Tokens:  credential.TokenPairFrom(result.Tokens),
 		Profile: credential.Profile{
 			ID:     result.User.ID,
 			Email:  result.User.Email,
