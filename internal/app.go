@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/capcom6/go-cli-template/internal/cli/codes"
-	"github.com/capcom6/go-cli-template/internal/commands"
+	"github.com/bit-issues/cli/internal/cli/codes"
+	"github.com/bit-issues/cli/internal/commands"
 	logger "github.com/go-core-fx/cli-logger"
 	"github.com/urfave/cli/v3"
 )
@@ -18,15 +18,20 @@ import (
 // needs, and defers cleanup.
 func Run(ctx context.Context, log logger.Logger, version string) error {
 	app := &cli.Command{
-		Name:        "go-cli-template",
-		Usage:       "Opinionated Go CLI project template",
-		Description: "Opinionated Go CLI project template",
+		Name:        "bitissues-cli",
+		Usage:       "BitIssues command-line client and read-only MCP server",
+		Description: "BitIssues command-line client and read-only MCP server",
 		Version:     version,
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
 				Name:    "debug",
 				Usage:   "enable debug mode",
 				Sources: cli.EnvVars("DEBUG"),
+			},
+			&cli.StringFlag{
+				Name:    "base-url",
+				Usage:   "BitIssues API base URL, including the /api/v1 prefix",
+				Sources: cli.EnvVars("BITISSUES_URL"),
 			},
 		},
 		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {

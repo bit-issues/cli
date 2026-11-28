@@ -1,254 +1,89 @@
-<a id="readme-top"></a>
+# bitissues-cli
 
-<!-- PROJECT SHIELDS -->
-[![Contributors][contributors-shield]][contributors-url]
-[![Forks][forks-shield]][forks-url]
-[![Stargazers][stars-shield]][stars-url]
-[![Issues][issues-shield]][issues-url]
-[![Apache License][license-shield]][license-url]
-[![Go][go-shield]][go-url]
+`bitissues-cli` is the command-line client and read-only MCP server for BitIssues. It talks to the
+BitIssues REST API through [`github.com/bit-issues/client-go`](https://github.com/bit-issues/client-go)
+over HTTP; it does not import backend internals and does not touch a database.
 
-<!-- PROJECT LOGO -->
-<br />
-<div align="center">
-  <a href="https://github.com/capcom6/go-cli-template">
-    <img src="https://raw.githubusercontent.com/golang-samples/gopher-vector/master/gopher.png" alt="Logo" width="120" height="120">
-  </a>
+## Commands
 
-<h3 align="center">go-cli-template</h3>
-
-  <p align="center">
-    Opinionated Go CLI project template with flag-driven configuration, plain-constructor wiring, and one-shot commands.
-    <br />
-    <a href="https://github.com/capcom6/go-cli-template"><strong>Explore the docs »</strong></a>
-    <br />
-    <br />
-    <a href="https://github.com/capcom6/go-cli-template/issues">Report Bug</a>
-    ·
-    <a href="https://github.com/capcom6/go-cli-template/issues">Request Feature</a>
-  </p>
-</div>
-
-
-
-<!-- TABLE OF CONTENTS -->
-- [About The Project](#about-the-project)
-  - [Built With](#built-with)
-- [Getting Started](#getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Installation](#installation)
-- [Usage](#usage)
-- [Roadmap](#roadmap)
-- [Contributing](#contributing)
-- [License](#license)
-- [Contact](#contact)
-- [Acknowledgments](#acknowledgments)
-
-
-
-<!-- ABOUT THE PROJECT -->
-## About The Project
-
-This repository is a production-oriented starter for command-line tools in Go. It ships with:
-
-* CLI shell built on [urfave/cli v3](https://github.com/urfave/cli) with a help root command, `--version`, and a `--debug` global flag.
-* Flag-driven configuration: every flag also reads from an environment variable, with an optional `.env` file loaded at startup.
-* A one-shot `example` command demonstrating plain-constructor wiring — no DI framework.
-* Typed process exit codes (`ParamsError`, `OutputError`, `InternalError`, …) with usage errors classified correctly.
-* Structured logging via [`go-core-fx/cli-logger`](https://github.com/go-core-fx/cli-logger), configured from `.env`.
-* GoReleaser-based releases: linux/windows/darwin binaries plus a container image.
-
-Use this template when you want a fast path to shipping CLI tools, admin tasks, migrations, or data-sync jobs with a clean layout.
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
-### Built With
-
-* [![Go][go-shield]][go-url]
-* [![CLI][cli-shield]][cli-url]
-* [![GoReleaser][goreleaser-shield]][goreleaser-url]
-* [![golangci-lint][golangci-shield]][golangci-url]
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
-
-<!-- GETTING STARTED -->
-## Getting Started
-
-Follow these steps to build and run the CLI locally.
-
-### Prerequisites
-
-* Go 1.25+
-  ```sh
-  go version
-  ```
-* `golangci-lint` v2.14.0 or later (optional but recommended)
-  ```sh
-  golangci-lint version
-  ```
-
-### Installation
-
-1. Clone the repo.
-   ```sh
-   git clone https://github.com/capcom6/go-cli-template.git
-   cd go-cli-template
-   ```
-2. Download dependencies.
-   ```sh
-   make deps
-   ```
-3. Build the binary.
-   ```sh
-   make build
-   ```
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
-
-<!-- USAGE EXAMPLES -->
-## Usage
-
-Run the CLI:
-
-```sh
-go run .
+```
+bitissues-cli auth login    # TTY password (echo off), writes one 0600 credentials.json
+bitissues-cli auth logout   # revokes the stored token and deletes the file
+bitissues-cli mcp           # serves six read-only tools over stdio JSON-RPC
 ```
 
-Or with live reload:
+There is no `auth status` command. `mcp` never prompts and never writes to stdout except protocol
+frames: logs and errors go to stderr.
 
-```sh
-make air
-```
-
-CLI commands:
-
-```sh
-go run . --help                      # list commands
-go run . example                     # one-shot demo
-go run . example --value foo         # flag, or env EXAMPLE__VALUE=foo
-go run . --version                   # print version
-```
-
-Configuration comes from flags and environment variables; an optional `.env`
-file is loaded at startup (see `.env.example`):
+## Configuration
 
 | Variable | Purpose |
 |---|---|
-| `DEBUG` | debug mode (same as `--debug`) |
-| `LOG_LEVEL` | `debug\|info\|warn\|error\|fatal` |
-| `LOG_FORMAT` | `human\|json` |
-| `LOG_OUTPUT` | `stdout\|stderr\|<file path>` |
-| `NO_COLOR` | disable colored logs |
-| `EXAMPLE__VALUE` | value for the `example` command |
+| `BITISSUES_URL` | API base URL, **including** the `/api/v1` prefix (or `--base-url`) |
+| `BITISSUES_TOKEN` | static access token; wins over the file and never refreshes |
+| `BITISSUES_EMAIL` | optional default email for `auth login` (the password is never an env var) |
+| `DEBUG`, `LOG_*`, `NO_COLOR` | template logging settings (loaded from `.env` before the logger) |
 
-Exit codes:
+Credentials live at `$XDG_CONFIG_HOME/bitissues/credentials.json`, falling back to
+`~/.config/bitissues/credentials.json`. The file is mode `0600` and written atomically.
+`mcp` boots from `BITISSUES_TOKEN` first, then the file; with neither it exits non-zero with
+`not logged in - run 'bitissues-cli auth login'` and emits no stdout. On a clean exit the current
+tokens are saved again (save-on-exit), so a rotation survives; a crash can leave a stale file,
+which surfaces as `session expired - log in again` and requires a fresh login.
 
-| Code | Meaning |
-|---|---|
-| 0 | success |
-| 1 | invalid flags, arguments, or configuration |
-| 2 | failure caused by an external system |
-| 3 | result could not be produced or written |
-| 4 | unexpected internal failure |
+## MCP tools (read-only)
 
-Quality checks:
+`list_projects`, `get_project`, `list_tasks`, `get_task`, `list_task_comments`, `get_comment`.
+
+All tools are annotated `readOnlyHint`/`idempotentHint`/`openWorldHint`. Every result has a text
+content block and `structuredContent`; list tools echo `total`/`limit`/`offset` and a pagination
+note when more pages exist. Long text is truncated with `[truncated]`, and presigned attachment
+URLs are never returned. There are no write tools and no catch-all "call a method" tool.
+
+## Claude Code registration
+
+Local stdio is supported in **Claude Code and Cowork on the operator's machine**:
 
 ```sh
-make fmt
-make lint
-make test
-make coverage
+claude mcp add --transport stdio bitissues -- bitissues-cli mcp
 ```
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+Set `BITISSUES_URL` and either `BITISSUES_TOKEN` or a prior `auth login` in that environment.
+The exact stdio `.mcp.json` schema is documented at `code.claude.com/docs/en/mcp`, not in the
+general connector-building docs; consult that page before hand-editing a config file.
 
+**Not supported:** adding this as a hosted connector for `claude.ai` chat - that surface has no
+local stdio and no access to the operator's credentials file. A remote HTTP/Streamable-HTTP
+transport and an MCPB/plugin packaging path are deferred items; no directory submission happens
+in this wave.
 
+Verify with MCP Inspector:
 
-<!-- ROADMAP -->
-## Roadmap
+```sh
+npx @modelcontextprotocol/inspector --cli bitissues-cli mcp --method tools/list
+npx @modelcontextprotocol/inspector --cli bitissues-cli mcp \
+  --method tools/call --tool-name list_projects --tool-arg limit=5
+```
 
-- [x] CLI shell with flag-driven configuration
-- [x] Example one-shot command with plain-constructor wiring
-- [x] Typed exit codes with usage-error classification
-- [ ] Additional command templates
+## Trust boundary
 
-See the [open issues](https://github.com/capcom6/go-cli-template/issues) for a full list of proposed features (and known issues).
+Reads are **unscoped**: any stored credential can read every project, task and comment, and the
+model may echo that data to a cloud LLM. Run the MCP server only in trusted contexts. A
+per-credential project allowlist is a deferred item.
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+## Development
 
+```
+make build    # bin/bitissues-cli
+make fmt
+make lint     # zero issues
+make test
+```
 
+Local cross-repo development uses a gitignored `cli/go.work` with `use (. ../client-go)`.
+`GOWORK=off go build ./...` verifies that the SHA-pinned client-go pseudo-version in `go.mod`
+resolves from the module proxy. The module is never tagged; client-go is referenced by its
+pushed commit SHA only.
 
-<!-- CONTRIBUTING -->
-## Contributing
-
-Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
-
-If you have a suggestion that would make this better, please fork the repo and create a pull request. You can also open an issue with the tag "enhancement".
-Don't forget to give the project a star! Thanks again!
-
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
-
-<!-- LICENSE -->
-## License
-
-Distributed under the Apache 2.0 License. See `LICENSE` for more information.
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
-
-<!-- CONTACT -->
-## Contact
-
-Maintainer: [@capcom6](https://github.com/capcom6)
-
-Project Link: [https://github.com/capcom6/go-cli-template](https://github.com/capcom6/go-cli-template)
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
-
-<!-- ACKNOWLEDGMENTS -->
-## Acknowledgments
-
-* [Best README Template](https://github.com/othneildrew/Best-README-Template)
-* [urfave/cli](https://github.com/urfave/cli)
-* [GoReleaser](https://goreleaser.com)
-* [Shields.io](https://shields.io)
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
-
-<!-- MARKDOWN LINKS & IMAGES -->
-[contributors-shield]: https://img.shields.io/github/contributors/capcom6/go-cli-template.svg?style=for-the-badge
-[contributors-url]: https://github.com/capcom6/go-cli-template/graphs/contributors
-[forks-shield]: https://img.shields.io/github/forks/capcom6/go-cli-template.svg?style=for-the-badge
-[forks-url]: https://github.com/capcom6/go-cli-template/network/members
-[stars-shield]: https://img.shields.io/github/stars/capcom6/go-cli-template.svg?style=for-the-badge
-[stars-url]: https://github.com/capcom6/go-cli-template/stargazers
-[issues-shield]: https://img.shields.io/github/issues/capcom6/go-cli-template.svg?style=for-the-badge
-[issues-url]: https://github.com/capcom6/go-cli-template/issues
-[license-shield]: https://img.shields.io/github/license/capcom6/go-cli-template.svg?style=for-the-badge
-[license-url]: https://github.com/capcom6/go-cli-template/blob/master/LICENSE
-[go-shield]: https://img.shields.io/badge/go-1.25%2B-00ADD8?style=for-the-badge&logo=go
-[go-url]: https://go.dev/
-[cli-shield]: https://img.shields.io/badge/urfave%2Fcli-v3-00b4d8?style=for-the-badge
-[cli-url]: https://github.com/urfave/cli
-[goreleaser-shield]: https://img.shields.io/badge/GoReleaser-v2-F7B42B?style=for-the-badge&logo=goreleaser&logoColor=black
-[goreleaser-url]: https://goreleaser.com
-[golangci-shield]: https://img.shields.io/badge/golangci%2Flint-v2-ED1C24?style=for-the-badge
-[golangci-url]: https://golangci-lint.run
+Exit codes: `0` success, `1` bad params/config, `2` external failure, `3` output failure,
+`4` internal failure.

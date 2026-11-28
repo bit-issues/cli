@@ -6,13 +6,11 @@
 package commands
 
 import (
-	"github.com/capcom6/go-cli-template/internal/commands/example"
+	"github.com/bit-issues/cli/internal/cmd"
 	"github.com/urfave/cli/v3"
 )
 
 // Commands returns all available CLI commands.
 func Commands() []*cli.Command {
-	return []*cli.Command{
-		example.Command(),
-	}
+	return cmd.Commands()
 }
