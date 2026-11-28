@@ -16,6 +16,7 @@ const (
 	expectedToolCount = 6
 	priorityEnumCount = 5
 	statusEnumCount   = 10
+	maxOffsetValue    = 100000
 )
 
 var allowedSorts = []string{
@@ -132,6 +133,58 @@ func TestScalarEnumAndDefaults(t *testing.T) {
 	offset := mcp.Schemas()["list_tasks"].Properties["offset"]
 	if string(offset.Default) != "0" {
 		t.Errorf("offset.Default = %s, want %d", offset.Default, firstPageOffset)
+	}
+}
+
+func TestIdentifierPropertiesHaveNoMaximum(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		tool     string
+		property string
+	}{
+		{tool: "get_task", property: "id"},
+		{tool: "get_task", property: "number"},
+		{tool: "list_task_comments", property: "task_id"},
+		{tool: "get_comment", property: "task_id"},
+		{tool: "get_comment", property: "comment_id"},
+		{tool: "list_tasks", property: "author"},
+		{tool: "list_tasks", property: "assignee"},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.tool+"."+tt.property, func(t *testing.T) {
+			t.Parallel()
+
+			prop := mcp.Schemas()[tt.tool].Properties[tt.property]
+			if prop == nil {
+				t.Fatalf("missing property %s.%s", tt.tool, tt.property)
+			}
+			if prop.Maximum != nil {
+				t.Errorf("%s.%s Maximum = %v, want nil", tt.tool, tt.property, *prop.Maximum)
+			}
+			if prop.Minimum == nil || *prop.Minimum != firstPageOffset {
+				t.Errorf("%s.%s Minimum = %v, want %d", tt.tool, tt.property, prop.Minimum, firstPageOffset)
+			}
+		})
+	}
+}
+
+func TestPaginationMaximumUnchanged(t *testing.T) {
+	t.Parallel()
+
+	for _, tool := range []string{"list_projects", "list_tasks", "list_task_comments"} {
+		t.Run(tool, func(t *testing.T) {
+			t.Parallel()
+
+			offset := mcp.Schemas()[tool].Properties["offset"]
+			if offset == nil {
+				t.Fatalf("%s missing offset", tool)
+			}
+			if offset.Maximum == nil || *offset.Maximum != maxOffsetValue {
+				t.Errorf("%s.offset Maximum = %v, want %d", tool, offset.Maximum, maxOffsetValue)
+			}
+		})
 	}
 }
 

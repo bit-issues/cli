@@ -95,22 +95,21 @@ func TestFilterRejectsInvalidEnums(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name   string
-		values []string
+		name     string
+		values   []string
+		validate func([]string) error
 	}{
-		{name: "lowercase status", values: []string{"in progress"}},
-		{name: "unknown status", values: []string{"New", "Nope"}},
-		{name: "lowercase priority", values: []string{"minor"}},
+		{name: "lowercase status", values: []string{"in progress"}, validate: mcp.ValidateStatuses},
+		{name: "unknown status", values: []string{"New", "Nope"}, validate: mcp.ValidateStatuses},
+		{name: "lowercase priority", values: []string{"minor"}, validate: mcp.ValidatePriorities},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			isStatus := mcp.ValidateStatuses(tt.values) != nil
-			isPriority := mcp.ValidatePriorities(tt.values) != nil
-			if !isStatus && !isPriority {
-				t.Errorf("values %v accepted by both validators", tt.values)
+			if err := tt.validate(tt.values); err == nil {
+				t.Errorf("values %v accepted by %s", tt.values, tt.name)
 			}
 		})
 	}

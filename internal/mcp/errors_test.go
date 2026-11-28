@@ -111,6 +111,28 @@ func TestMapErrorByStatus(t *testing.T) {
 	}
 }
 
+func TestMapErrorUnauthorizedUsesReauthHint(t *testing.T) {
+	t.Parallel()
+
+	const misleadingHint = "use list_tasks"
+
+	err := mcp.MapError(&restkit.APIError{
+		StatusCode: http.StatusUnauthorized,
+		URL:        "http://backend/api/v1/tasks",
+		Body:       []byte(secretBodyMarker),
+	}, misleadingHint, false)
+
+	if !errors.Is(err, mcp.ErrNotAuthenticated) {
+		t.Errorf("error = %v, want ErrNotAuthenticated", err)
+	}
+	if !strings.Contains(err.Error(), "auth login") {
+		t.Errorf("error lacks reauth hint: %v", err)
+	}
+	if strings.Contains(err.Error(), misleadingHint) {
+		t.Errorf("error echoed misleading caller hint: %v", err)
+	}
+}
+
 func TestIsNotFound(t *testing.T) {
 	t.Parallel()
 

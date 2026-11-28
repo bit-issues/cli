@@ -53,18 +53,18 @@ func Schemas() map[string]*jsonschema.Schema {
 		}, "slug"),
 		"list_tasks": listTasksSchema(),
 		"get_task": objectSchema(map[string]*jsonschema.Schema{
-			"id":      boundedIntProperty(descGetTaskID),
+			"id":      identifierProperty(descGetTaskID),
 			"project": stringProperty(descGetProject),
-			"number":  boundedIntProperty(descGetNumber),
+			"number":  identifierProperty(descGetNumber),
 		}),
 		"list_task_comments": objectSchema(map[string]*jsonschema.Schema{
-			propTaskID: boundedIntProperty(descCommentsID),
+			propTaskID: identifierProperty(descCommentsID),
 			propLimit:  intProperty(descLimit, defaultLimit, 1, maxLimit),
 			propOffset: intProperty(descOffset, 0, 0, maxOffset),
 		}, propTaskID),
 		"get_comment": objectSchema(map[string]*jsonschema.Schema{
-			propTaskID:   boundedIntProperty(descTaskID),
-			"comment_id": boundedIntProperty(descCommentID),
+			propTaskID:   identifierProperty(descTaskID),
+			"comment_id": identifierProperty(descCommentID),
 		}, propTaskID, "comment_id"),
 	}
 }
@@ -82,8 +82,8 @@ func listTasksSchema() *jsonschema.Schema {
 
 	return objectSchema(map[string]*jsonschema.Schema{
 		"project":    stringProperty(descProject),
-		"author":     boundedIntProperty(descAuthor),
-		"assignee":   boundedIntProperty(descAssignee),
+		"author":     identifierProperty(descAuthor),
+		"assignee":   identifierProperty(descAssignee),
 		"statuses":   enumArrayProperty(descStatuses, statuses),
 		"priorities": enumArrayProperty(descPriorities, priorities),
 		propSearch:   stringProperty(descSearch),
@@ -127,14 +127,12 @@ func intProperty(description string, defaultValue, minimum, maximum int) *jsonsc
 	return &schema
 }
 
-func boundedIntProperty(description string) *jsonschema.Schema {
+func identifierProperty(description string) *jsonschema.Schema {
 	var schema jsonschema.Schema
 	schema.Type = typeInteger
 	schema.Description = description
 	minValue := float64(0)
-	maxValue := float64(maxOffset)
 	schema.Minimum = &minValue
-	schema.Maximum = &maxValue
 
 	return &schema
 }

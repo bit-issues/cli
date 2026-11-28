@@ -78,7 +78,7 @@ func MapError(err error, hint string, staticMode bool) error {
 			return fmt.Errorf("%w: %s", ErrNotAuthenticated, hintReplaceStatic)
 		}
 
-		return fmt.Errorf("%w: %s", ErrNotAuthenticated, hint)
+		return fmt.Errorf("%w: %s", ErrNotAuthenticated, hintReauth)
 	case http.StatusForbidden:
 		return fmt.Errorf("%w: the stored credential cannot read this resource", ErrForbidden)
 	case http.StatusUnprocessableEntity:
